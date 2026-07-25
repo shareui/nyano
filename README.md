@@ -25,6 +25,7 @@ Options:
 -p, --parent   create parent folders too if they do not exist (requires --create)
 -r, --read     open the file in read-only mode
 -b, --backup   create a backup copy after saving
+-t, --tab-width <TAB_WIDTH>  number of spaces per tab [default: 4]
 -h, --help     Print help
 -V, --version  Print version
 ```
@@ -32,11 +33,12 @@ Options:
 ### Editor
 
 #### Cursor movement
-`Arrows` and `RMB`
+`Arrows` and `LMB`
 
 #### Selection
-`shift+arrows` - select text  
-`ctrl+a` - select all
+`shift+arrows`/`mouse+LMB` - Select text  
+`ctrl+a` - Select all
+
 
 #### Keys
 `ctrl+s` - Save changes/file  
@@ -44,6 +46,7 @@ Options:
 `ctrl+x` - Cut selection  
 `ctrl+v` - Paste  
 `ctrl+z` - Undo  
+`ctrl+y` - Redo  
 `ctrl+q`/`esc` - Exit
 
 ## License

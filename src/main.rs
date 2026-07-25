@@ -30,7 +30,7 @@ fn main() -> ExitCode {
         }
     };
 
-    let doc = Document::from_text(&initial_text);
+    let doc = Document::from_text(&initial_text, cli.tab_width);
     let editor_result = Editor::new(doc, path, cli.read_only, cli.backup, banner)
         .and_then(Editor::run);
 

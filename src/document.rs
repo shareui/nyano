@@ -12,11 +12,13 @@ pub struct Document {
     pub cursor_col: usize,
     pub selection_anchor: Option<Position>,
     undo_stack: Vec<UndoEntry>,
+    redo_stack: Vec<UndoEntry>,
     last_edit_kind: EditKind,
     // per-line hash of the file as it was when opened, used to detect real unsaved changes
     original_hashes: Vec<u64>,
     // per-line hash of the current buffer, kept in sync incrementally on every edit
     current_hashes: Vec<u64>,
+    tab_width: usize,
 }
 
 // snapshot-based undo entry, coalesced by edit kind so continuous typing is one undo step
@@ -48,11 +50,11 @@ fn hash_all_lines(lines: &[Vec<char>]) -> Vec<u64> {
     lines.iter().map(|line| hash_line(line)).collect()
 }
 
-fn expand_tabs(line: &str) -> Vec<char> {
+fn expand_tabs(line: &str, tab_width: usize) -> Vec<char> {
     let mut result = Vec::with_capacity(line.len());
     for c in line.chars() {
         if c == '\t' {
-            for _ in 0..4 {
+            for _ in 0..tab_width {
                 result.push(' ');
             }
         } else {
@@ -63,11 +65,11 @@ fn expand_tabs(line: &str) -> Vec<char> {
 }
 
 impl Document {
-    pub fn from_text(text: &str) -> Self {
+    pub fn from_text(text: &str, tab_width: usize) -> Self {
         let lines: Vec<Vec<char>> = if text.is_empty() {
             vec![Vec::new()]
         } else {
-            text.lines().map(|line| expand_tabs(line)).collect()
+            text.lines().map(|line| expand_tabs(line, tab_width)).collect()
         };
         let lines = if lines.is_empty() { vec![Vec::new()] } else { lines };
         let original_hashes = hash_all_lines(&lines);
@@ -78,9 +80,11 @@ impl Document {
             cursor_col: 0,
             selection_anchor: None,
             undo_stack: Vec::new(),
+            redo_stack: Vec::new(),
             last_edit_kind: EditKind::None,
             original_hashes,
             current_hashes,
+            tab_width,
         }
     }
 
@@ -110,6 +114,7 @@ impl Document {
     }
 
     fn snapshot_for(&mut self, kind: EditKind) {
+        self.redo_stack.clear();
         if self.last_edit_kind == kind {
             return;
         }
@@ -133,7 +138,7 @@ impl Document {
 
     pub fn insert_tab(&mut self) {
         self.snapshot_for(EditKind::Other);
-        for _ in 0..4 {
+        for _ in 0..self.tab_width {
             self.insert_char(' ');
         }
     }
@@ -371,6 +376,28 @@ impl Document {
         let Some(entry) = self.undo_stack.pop() else {
             return;
         };
+        self.redo_stack.push(UndoEntry {
+            lines: self.lines.clone(),
+            cursor_row: self.cursor_row,
+            cursor_col: self.cursor_col,
+        });
+        self.lines = entry.lines;
+        self.cursor_row = entry.cursor_row;
+        self.cursor_col = entry.cursor_col;
+        self.selection_anchor = None;
+        self.last_edit_kind = EditKind::None;
+        self.rehash_all();
+    }
+
+    pub fn redo(&mut self) {
+        let Some(entry) = self.redo_stack.pop() else {
+            return;
+        };
+        self.undo_stack.push(UndoEntry {
+            lines: self.lines.clone(),
+            cursor_row: self.cursor_row,
+            cursor_col: self.cursor_col,
+        });
         self.lines = entry.lines;
         self.cursor_row = entry.cursor_row;
         self.cursor_col = entry.cursor_col;

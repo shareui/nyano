@@ -140,6 +140,11 @@ impl Editor {
             return Ok(None);
         }
 
+        if ctrl && code == KeyCode::Char('y') {
+            self.doc.redo();
+            return Ok(None);
+        }
+
         if ctrl && code == KeyCode::Char('a') {
             self.doc.select_all();
             return Ok(None);

@@ -80,7 +80,16 @@ impl TerminalUi {
     }
 
     fn render_cursor(&self, out: &mut impl Write, doc: &Document) -> io::Result<()> {
-        let screen_row = (doc.cursor_row - self.scroll_offset) as u16 + 1;
+        // guard against cursor_row < scroll_offset (would underflow usize) and
+        // clamp to the visible body area
+        if doc.cursor_row < self.scroll_offset {
+            return Ok(());
+        }
+        let relative = doc.cursor_row - self.scroll_offset;
+        if relative >= self.body_height() {
+            return Ok(());
+        }
+        let screen_row = relative as u16 + 1;
         let screen_col = doc.cursor_col as u16;
         let under_cursor = doc
             .lines

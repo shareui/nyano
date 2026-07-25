@@ -37,6 +37,10 @@ remove_foreign_install() {
  echo "Removing existing ${BINARY_NAME} at ${existing}"
  if [ -w "$(dirname "${existing}")" ]; then
   rm -f -- "${existing}"
+ elif command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+  sudo rm -f -- "${existing}"
+ elif command -v doas >/dev/null 2>&1; then
+  doas rm -f -- "${existing}"
  else
   sudo rm -f -- "${existing}"
  fi
@@ -53,8 +57,16 @@ if cargo build --release; then
  fi
 
  if [ ! -w "${INSTALL_DIR}" ]; then
-  echo "Installing to ${INSTALL_DIR} (requires sudo)..."
-  sudo install -m 755 "${TARGET_PATH}" "${INSTALL_DIR}/${BINARY_NAME}"
+  if command -v sudo >/dev/null 2>&1 && sudo -n true 2>/dev/null; then
+   echo "Installing to ${INSTALL_DIR} (requires sudo)..."
+   sudo install -m 755 "${TARGET_PATH}" "${INSTALL_DIR}/${BINARY_NAME}"
+  elif command -v doas >/dev/null 2>&1; then
+   echo "Installing to ${INSTALL_DIR} (requires doas)..."
+   doas install -m 755 "${TARGET_PATH}" "${INSTALL_DIR}/${BINARY_NAME}"
+  else
+   echo "Installing to ${INSTALL_DIR} (requires sudo)..."
+   sudo install -m 755 "${TARGET_PATH}" "${INSTALL_DIR}/${BINARY_NAME}"
+  fi
  else
   install -m 755 "${TARGET_PATH}" "${INSTALL_DIR}/${BINARY_NAME}"
  fi

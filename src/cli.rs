@@ -12,4 +12,6 @@ pub struct Cli {
     pub read_only: bool,
     #[arg(short = 'b', long = "backup")]
     pub backup: bool,
+    #[arg(short = 't', long = "tab-width", default_value_t = 4)]
+    pub tab_width: usize,
 }
