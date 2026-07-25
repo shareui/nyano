@@ -9,7 +9,7 @@ use crossterm::terminal::{
 use crossterm::{execute, queue};
 use owo_colors::OwoColorize;
 
-use crate::document::Document;
+use crate::document::{Document, Position};
 use crate::upaths::truncate_for_display;
 
 pub struct TerminalUi {
@@ -21,7 +21,7 @@ pub struct TerminalUi {
 impl TerminalUi {
     pub fn init() -> io::Result<Self> {
         enable_raw_mode()?;
-        execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture, Hide)?;
+        execute!(io::stdout(), EnterAlternateScreen, EnableMouseCapture, Hide)?; // exexe cute!
         let (width, height) = size()?;
         Ok(TerminalUi { width, height, scroll_offset: 0 })
     }
@@ -80,53 +80,60 @@ impl TerminalUi {
     }
 
     fn render_cursor(&self, out: &mut impl Write, doc: &Document) -> io::Result<()> {
-        // Fix #4: guard against cursor_row < scroll_offset (would underflow usize)
-        // and clamp the result to the visible body area.
-        if doc.cursor_row < self.scroll_offset {
-            return Ok(());
-        }
-        let relative = doc.cursor_row - self.scroll_offset;
-        let body_height = self.body_height();
-        if relative >= body_height {
-            return Ok(());
-        }
-        let screen_row = (relative as u16).saturating_add(1);
-
-        // Use visual column so the cursor lands on the correct screen column
-        // when tabs are present.
-        let screen_col = doc.visual_cursor_col() as u16;
-
+        let screen_row = (doc.cursor_row - self.scroll_offset) as u16 + 1;
+        let screen_col = doc.cursor_col as u16;
         let under_cursor = doc
             .lines
             .get(doc.cursor_row)
             .and_then(|line| line.get(doc.cursor_col))
             .copied()
             .unwrap_or(' ');
-        // Replace tab with a visible space character for the inverted-cell
-        // cursor rendering (the actual tab spacing is already handled in
-        // render_body via line_to_visual).
-        let display_char = if under_cursor == '\t' { ' ' } else { under_cursor };
-
         queue!(out, MoveTo(screen_col, screen_row))?;
-        write!(out, "{}", display_char.reversed())?;
+        write!(out, "{}", under_cursor.reversed())?;
         Ok(())
     }
 
     fn render_body(&self, out: &mut impl Write, doc: &Document) -> io::Result<()> {
         let body_height = self.body_height();
+        let selection = doc.selection_range();
         for screen_row in 0..body_height {
             let line_index = self.scroll_offset + screen_row;
             queue!(out, MoveTo(0, (screen_row + 1) as u16))?;
             if line_index < doc.lines.len() {
-                // Fix #2: expand tabs visually for rendering without touching
-                // the underlying char vec.
-                let text = Document::line_to_visual(&doc.lines[line_index]);
-                let visible = pad_or_trim(&text, self.width as usize);
-                write!(out, "{visible}")?;
+                self.render_line(out, doc, line_index, selection)?;
             } else {
                 write!(out, "{}", "~".dimmed())?;
             }
         }
+        Ok(())
+    }
+
+    fn render_line(
+        &self,
+        out: &mut impl Write,
+        doc: &Document,
+        line_index: usize,
+        selection: Option<(Position, Position)>,
+    ) -> io::Result<()> {
+        let text: String = doc.lines[line_index].iter().collect();
+        let visible = pad_or_trim(&text, self.width as usize);
+
+        let Some(range) = selection_cols_on_line(selection, line_index, doc.lines[line_index].len()) else {
+            write!(out, "{visible}")?;
+            return Ok(());
+        };
+
+        let chars: Vec<char> = visible.chars().collect();
+        let width = chars.len();
+        let start = range.0.min(width);
+        let end = range.1.min(width);
+        let before: String = chars[..start].iter().collect();
+        let highlighted: String = chars[start..end].iter().collect();
+        let after: String = chars[end..].iter().collect();
+
+        write!(out, "{before}")?;
+        write!(out, "{}", highlighted.reversed())?;
+        write!(out, "{after}")?;
         Ok(())
     }
 
@@ -153,7 +160,7 @@ impl TerminalUi {
         if read_only {
             suffix.push_str(" [read-only]");
         }
-        if doc.dirty {
+        if doc.is_dirty() {
             suffix.push_str(" Unsaved changes");
         }
 
@@ -183,6 +190,21 @@ fn overlay_edge(line: &mut [char], text: &str, at_start: bool) {
             line[offset + i] = chars[i];
         }
     }
+}
+
+// (start_col, end_col) range
+fn selection_cols_on_line(
+    selection: Option<(Position, Position)>,
+    line_index: usize,
+    line_len: usize,
+) -> Option<(usize, usize)> {
+    let (start, end) = selection?;
+    if line_index < start.row || line_index > end.row {
+        return None;
+    }
+    let start_col = if line_index == start.row { start.col } else { 0 };
+    let end_col = if line_index == end.row { end.col } else { line_len };
+    Some((start_col, end_col))
 }
 
 fn pad_or_trim(text: &str, width: usize) -> String {

@@ -1,5 +1,6 @@
 mod backup;
 mod cli;
+mod cxx;
 mod document;
 mod editor;
 mod error;

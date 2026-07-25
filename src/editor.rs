@@ -2,6 +2,7 @@ use std::io;
 use std::path::PathBuf;
 use std::time::{Duration, Instant};
 
+use arboard::Clipboard;
 use crossterm::event::{self, Event, KeyCode, KeyEventKind, KeyModifiers, MouseEventKind};
 
 use crate::backup::create_backup;
@@ -18,6 +19,7 @@ pub struct Editor {
     read_only: bool,
     backup_on_save: bool,
     banner: Option<(String, Instant)>,
+    clipboard: Option<Clipboard>,
 }
 
 pub enum ExitReason {
@@ -36,17 +38,14 @@ impl Editor {
     ) -> io::Result<Self> {
         let ui = TerminalUi::init()?;
         let banner = initial_banner.map(|text| (text, Instant::now()));
-        Ok(Editor { doc, ui, file_path, read_only, backup_on_save, banner })
+        let clipboard = Clipboard::new().ok();
+        Ok(Editor { doc, ui, file_path, read_only, backup_on_save, banner, clipboard })
     }
 
     pub fn run(mut self) -> io::Result<ExitReason> {
         let result = self.main_loop();
         self.ui.shutdown()?;
         result
-    }
-
-    fn set_banner(&mut self, message: impl Into<String>) {
-        self.banner = Some((message.into(), Instant::now()));
     }
 
     fn main_loop(&mut self) -> io::Result<ExitReason> {
@@ -70,10 +69,20 @@ impl Editor {
                     }
                 }
                 Event::Mouse(mouse_event) => {
-                    if let MouseEventKind::Down(_) = mouse_event.kind {
-                        let row = self.ui.scroll_offset + mouse_event.row.saturating_sub(1) as usize;
-                        let col = mouse_event.column as usize;
-                        self.doc.set_cursor_from_screen(row, col);
+                    let row = self.ui.scroll_offset + mouse_event.row.saturating_sub(1) as usize;
+                    let col = mouse_event.column as usize;
+                    match mouse_event.kind {
+                        MouseEventKind::Down(_) => {
+                            self.doc.clear_selection();
+                            self.doc.set_cursor_from_screen(row, col);
+                        }
+                        MouseEventKind::Drag(_) => {
+                            if self.doc.selection_anchor.is_none() {
+                                self.doc.selection_anchor = Some(self.doc.cursor_position());
+                            }
+                            self.doc.set_cursor_from_screen(row, col);
+                        }
+                        _ => {}
                     }
                 }
                 Event::Resize(_, _) => {
@@ -93,21 +102,46 @@ impl Editor {
     }
 
     fn handle_key(&mut self, code: KeyCode, modifiers: KeyModifiers) -> io::Result<Option<ExitReason>> {
-        if modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char('s') {
+        let ctrl = modifiers.contains(KeyModifiers::CONTROL);
+
+        if ctrl && code == KeyCode::Char('s') {
             if self.read_only {
                 return Ok(None);
             }
             return self.try_save();
         }
 
-        if (modifiers.contains(KeyModifiers::CONTROL) && code == KeyCode::Char('q'))
-            || code == KeyCode::Esc
-        {
+        if (ctrl && code == KeyCode::Char('q')) || code == KeyCode::Esc {
             return self.try_quit();
         }
 
+        if ctrl && code == KeyCode::Char('c') {
+            self.copy_selection();
+            return Ok(None);
+        }
+
         if self.read_only {
-            self.handle_navigation_key(code);
+            self.handle_navigation_key(code, modifiers);
+            return Ok(None);
+        }
+
+        if ctrl && code == KeyCode::Char('x') {
+            self.cut_selection();
+            return Ok(None);
+        }
+
+        if ctrl && code == KeyCode::Char('v') {
+            self.paste_clipboard();
+            return Ok(None);
+        }
+
+        if ctrl && code == KeyCode::Char('z') {
+            self.doc.undo();
+            return Ok(None);
+        }
+
+        if ctrl && code == KeyCode::Char('a') {
+            self.doc.select_all();
             return Ok(None);
         }
 
@@ -117,18 +151,62 @@ impl Editor {
             KeyCode::Enter => self.doc.insert_newline(),
             KeyCode::Backspace => self.doc.backspace(),
             KeyCode::Delete => self.doc.delete_forward(),
-            _ => self.handle_navigation_key(code),
+            _ => self.handle_navigation_key(code, modifiers),
         }
         Ok(None)
     }
 
-    fn handle_navigation_key(&mut self, code: KeyCode) {
-        match code {
-            KeyCode::Left => self.doc.move_left(),
-            KeyCode::Right => self.doc.move_right(),
-            KeyCode::Up => self.doc.move_up(),
-            KeyCode::Down => self.doc.move_down(),
+    fn handle_navigation_key(&mut self, code: KeyCode, modifiers: KeyModifiers) {
+        let shift = modifiers.contains(KeyModifiers::SHIFT);
+        match (code, shift) {
+            (KeyCode::Left, true) => self.doc.select_left(),
+            (KeyCode::Right, true) => self.doc.select_right(),
+            (KeyCode::Up, true) => self.doc.select_up(),
+            (KeyCode::Down, true) => self.doc.select_down(),
+            (KeyCode::Left, false) => {
+                self.doc.clear_selection();
+                self.doc.move_left();
+            }
+            (KeyCode::Right, false) => {
+                self.doc.clear_selection();
+                self.doc.move_right();
+            }
+            (KeyCode::Up, false) => {
+                self.doc.clear_selection();
+                self.doc.move_up();
+            }
+            (KeyCode::Down, false) => {
+                self.doc.clear_selection();
+                self.doc.move_down();
+            }
             _ => {}
+        }
+    }
+
+    fn copy_selection(&mut self) {
+        let Some(text) = self.doc.selected_text() else {
+            return;
+        };
+        if let Some(clipboard) = self.clipboard.as_mut() {
+            let _ = clipboard.set_text(text);
+        }
+    }
+
+    fn cut_selection(&mut self) {
+        let Some(text) = self.doc.cut_selection() else {
+            return;
+        };
+        if let Some(clipboard) = self.clipboard.as_mut() {
+            let _ = clipboard.set_text(text);
+        }
+    }
+
+    fn paste_clipboard(&mut self) {
+        let Some(clipboard) = self.clipboard.as_mut() else {
+            return;
+        };
+        if let Ok(text) = clipboard.get_text() {
+            self.doc.paste(&text);
         }
     }
 
@@ -136,29 +214,21 @@ impl Editor {
         let text = self.doc.to_text();
         match std::fs::write(&self.file_path, &text) {
             Ok(()) => {
-                self.doc.dirty = false;
+                self.doc.mark_saved();
                 if self.backup_on_save {
-                    // Fix #5b: report backup failure via banner instead of
-                    // silently ignoring it with `let _`.
-                    if let Err(e) = create_backup(&self.file_path, &text) {
-                        self.set_banner(format!("Backup failed: {e}"));
-                    }
+                    let _ = create_backup(&self.file_path, &text);
                 }
                 Ok(None)
             }
             Err(e) if e.kind() == io::ErrorKind::PermissionDenied => {
                 Ok(Some(ExitReason::PermissionDenied))
             }
-            // Fix #1: show the error as a banner instead of silently ignoring it.
-            Err(e) => {
-                self.set_banner(format!("Save failed: {e}"));
-                Ok(None)
-            }
+            Err(_) => Ok(None),
         }
     }
 
     fn try_quit(&mut self) -> io::Result<Option<ExitReason>> {
-        if !self.doc.dirty {
+        if !self.doc.is_dirty() {
             return Ok(Some(ExitReason::DiscardedChanges));
         }
         match self.prompt_save_on_quit()? {
@@ -172,7 +242,7 @@ impl Editor {
             QuitChoice::Cancel => Ok(None),
         }
     }
-
+    
     fn prompt_save_on_quit(&mut self) -> io::Result<QuitChoice> {
         loop {
             self.ui.render(
