@@ -1,0 +1,9 @@
+Package: nyano
+Version: AUTOLOAD_VERSION
+Section: editors
+Priority: optional
+Architecture: PLACE_ARCH
+Maintainer: shareui <shareui@proton.me>
+Homepage: https://github.com/shareui/nyano
+Description: A simple nano replacement for quick file edits
+ A simple nano replacement for quick file edits.

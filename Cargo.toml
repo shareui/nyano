@@ -1,0 +1,21 @@
+[package]
+name = "nyano"
+version = "1.0.0"
+edition = "2024"
+description = "a simple nano replacement for quick file edits"
+
+[[bin]]
+name = "nyano"
+path = "src/main.rs"
+
+[dependencies]
+clap = { version = "4.6", features = ["derive"] }
+crossterm = "0.29"
+owo-colors = "4.3"
+arboard = "3.4"
+
+[build-dependencies]
+cc = "1.1"
+
+[profile.release]
+opt-level = 3

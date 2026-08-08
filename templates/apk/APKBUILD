@@ -1,0 +1,18 @@
+# Contributor: shareui <shareui@proton.me>
+# Maintainer: shareui <shareui@proton.me>
+pkgname=nyano
+pkgver=AUTOLOAD_VERSION
+pkgrel=0
+pkgdesc="A simple nano replacement for quick file edits"
+url="https://github.com/shareui/nyano"
+arch="x86_64 aarch64"
+license="MIT"
+options="!check"
+source="nyano-linux-$CARCH.tar.gz"
+builddir="$srcdir"
+
+package() {
+    install -Dm755 "$srcdir/nyano" "$pkgdir/usr/bin/nyano"
+}
+
+sha512sums="AUTOLOAD_SHA512"

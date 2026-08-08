@@ -1,0 +1,17 @@
+pkgname=nyano
+pkgver=AUTOLOAD_VERSION
+pkgrel=1
+pkgdesc="A simple nano replacement for quick file edits"
+arch=('x86_64' 'aarch64')
+url="https://github.com/shareui/nyano"
+license=('MIT')
+depends=()
+options=('!strip')
+source_x86_64=("nyano-linux-x86_64.tar.gz")
+source_aarch64=("nyano-linux-aarch64.tar.gz")
+sha256sums_x86_64=('AUTOLOAD_SHA256_X86_64')
+sha256sums_aarch64=('AUTOLOAD_SHA256_AARCH64')
+
+package() {
+    install -Dm755 "$srcdir/nyano" "$pkgdir/usr/bin/nyano"
+}
