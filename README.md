@@ -3,9 +3,12 @@ A simple utility for Linux designed for simple and fast file editing.
 
 ## Installation
 Use this command to clone repository and compile then install binary:
-```shell
-curl -fsSL https://raw.githubusercontent.com/shareui/nyano/main/nyainstall.sh | sh
+```sh
+cargo install --git https://github.com/shareui/nyano
 ```
+
+> Then add installation dir to the PATH
+
 Requires `cargo` and `git`
 
 Also requires a C compiler (`cc`/`gcc`/`clang`) on your `PATH`, used to build the bundled `bithash` hashing library.
@@ -13,7 +16,7 @@ Also requires a C compiler (`cc`/`gcc`/`clang`) on your `PATH`, used to build th
 ## Usage guide
 
 ### CLI
-```shell
+```sh
 host@you: nyano --help
 Usage: nyano [OPTIONS] <PATH>
 
