@@ -1,5 +1,5 @@
 templates/
 target/
 scripts/
-Cargo.lock
 .idea/
+result/
