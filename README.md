@@ -2,12 +2,29 @@
 A simple utility for Linux designed for simple and fast file editing.
 
 ## Installation
+
+### Nix 
+
+Install Nix:
+```sh
+bash <(curl -L https://nixos.org/nix/install) --daemon
+```
+
+Then build from source, and install nyano as package:
+```sh
+nix profile add github:shareui/nyano
+```
+
+> Don't forget add a installation dir to the PATH
+
+### Cargo
+
 Use this command to clone repository and compile then install binary:
 ```sh
 cargo install --git https://github.com/shareui/nyano
 ```
 
-> Then add installation dir to the PATH
+> Don't forget add a installation dir to the PATH
 
 Requires `cargo` and `git`
 
